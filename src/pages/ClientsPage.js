@@ -10,6 +10,7 @@ const ClientsPage = () => {
   const [clients, setClients] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedClient, setSelectedClient] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const navigation = useNavigation();
 
@@ -58,25 +59,7 @@ const ClientsPage = () => {
     setSelectedClient(null);
   };
 
-  
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  const confirmDelete = async (message) => {
-    if (Platform.OS === 'web') {
-      return window.confirm(message);
-    }
-    return await new Promise((resolve) => {
-      Alert.alert(
-        "Excluir Cliente",
-        message,
-        [
-          { text: "Cancelar", style: "cancel", onPress: () => resolve(false) },
-          { text: "Confirmar", style: "destructive", onPress: () => resolve(true) },
-        ]
-      );
-    });
-  };
-const handleRegisterClients = () => {
+  const handleRegisterClients = () => {
     navigation.navigate("Cadastro de Cliente");
   }
 
@@ -99,33 +82,131 @@ const handleRegisterClients = () => {
     closeModal();
   };
 
-  
-const handleDeleteClient = async () => {
+  const handleDeleteClient = async () => {
+  try {
     if (!selectedClient) {
-      Alert.alert("Erro", "Nenhum cliente selecionado.");
+      if (Platform.OS === 'web') {
+        window.alert("Nenhum cliente selecionado.");
+      } else {
+        Alert.alert("Erro", "Nenhum cliente selecionado.");
+      }
       return;
     }
 
-    try {
-      const message = `Tem certeza que deseja excluir o cliente: ${selectedClient.person}?`;
-      const proceed = await confirmDelete(message);
-      if (!proceed) return;
+    const message = `Tem certeza que deseja excluir o cliente: ${selectedClient.person}?`;
 
-      setIsDeleting(true);
-      const clientRef = doc(db, "clients", selectedClient.id);
-      await deleteDoc(clientRef);
-
-      Alert.alert("Sucesso", `Cliente ${selectedClient.person} excluído com sucesso.`);
-      closeModal();
-      await loadClients();
-    } catch (error) {
-      console.error("Erro ao excluir cliente: ", error);
-      Alert.alert("Erro", error?.message || "Não foi possível excluir o cliente.");
-    } finally {
-      setIsDeleting(false);
+    let confirmed = false;
+    if (Platform.OS === 'web') {
+      confirmed = window.confirm(message);
+    } else {
+      confirmed = await new Promise((resolve) => {
+        Alert.alert("Excluir Cliente", message, [
+          { text: "Cancelar", style: "cancel", onPress: () => resolve(false) },
+          { text: "Confirmar", style: "destructive", onPress: () => resolve(true) },
+        ]);
+      });
     }
-  };
+    if (!confirmed) return;
 
+    setIsDeleting(true);
+    await deleteDoc(doc(db, "clients", selectedClient.id));
+
+    // fechar modal e recarregar
+    setIsModalVisible(false);
+    setSelectedClient(null);
+    if (typeof loadClients === 'function') {
+      await loadClients();
+    }
+
+    if (Platform.OS === 'web') {
+      window.alert("Cliente excluído com sucesso!");
+    } else {
+      Alert.alert("Sucesso", "Cliente excluído com sucesso!");
+    }
+  } catch (error) {
+    console.error("Erro ao excluir cliente:", error);
+    if (Platform.OS === 'web') {
+      window.alert("Não foi possível excluir o cliente.");
+    } else {
+      Alert.alert("Erro", "Não foi possível excluir o cliente.");
+    }
+  } finally {
+    setIsDeleting(false);
+  }
+};
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>Clientes cadastrados</Text>
+
+      <View style={styles.textInputModalSearch}>
+        <FontAwesome
+          name="search"
+          size={24}
+          color="gray"
+          style={{ paddingRight: 10 }}
+        />
+        <TextInput
+          placeholder="Procurar"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          style={{ flex: 1 }} />
+      </View>
+
+      <TouchableOpacity style={styles.buttonRegister} onPress={handleRegisterClients}>
+        <Text style={styles.modalButtonText}>Cadastrar Cliente</Text>
+        <AntDesign name='plus' size={24} color="#fff"/>
+      </TouchableOpacity>
+
+      <View style={styles.listContainer}>
+        {filteredClients.length > 0 ? (
+          <FlatList
+            data={filteredClients}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <Pressable
+                style={styles.lineClientsInOpen}
+                onPress={() => { openModal(item) }}
+              >
+                <Text>
+                  {item.person} - {item.cnpj}
+                </Text>
+              </Pressable>
+            )}
+            contentContainerStyle={styles.listContent}
+          />
+        ) : (
+          <Text style={styles.noClientsText}>Nenhum cliente cadastrado.</Text>
+        )}
+      </View>
+
+      <Modal
+        transparent={true}
+        visible={isModalVisible}
+        animationType="fade"
+        onRequestClose={closeModal}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Opções para: {selectedClient?.person}</Text>
+            <TouchableOpacity style={styles.modalButton} onPress={handleViewInspections}>
+              <Text style={styles.modalButtonText}>Ver Inspeções</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.modalButton} onPress={handleEditClient}>
+              <Text style={styles.modalButtonText}>Editar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.modalButtonDelete} disabled={isDeleting} onPress={handleDeleteClient}>
+              <Text style={styles.modalButtonTextDelete}>{isDeleting ? "Excluindo..." : "Excluir"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.modalButton} onPress={closeModal}>
+              <Text style={styles.modalButtonText}>Fechar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
   container: {

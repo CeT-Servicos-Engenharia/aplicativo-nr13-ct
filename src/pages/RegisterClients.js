@@ -13,7 +13,7 @@ import {
 import AntDesign from "@expo/vector-icons/AntDesign";
 import * as ImagePicker from "expo-image-picker";
 import { db } from "../../database/firebaseConfig";
-import { collection, addDoc, updateDoc, doc, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection, doc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 const RegisterClients = ({ route, navigation }) => {
@@ -36,7 +36,12 @@ const RegisterClients = ({ route, navigation }) => {
     if (client) {
       setInfoClients(client);
     }
-  }, [client]);  
+  }, [client]);
+  // evita duplo toque e monta chave única
+  const [isSaving, setIsSaving] = useState(false);
+  const norm = (s) => (s || "").toString().trim().toLowerCase();
+  const digits = (s) => (s || "").toString().replace(/\D/g, "");
+  
 
   const handleInputChange = (field, value) => {
     setInfoClients((prevState) => ({
@@ -79,6 +84,9 @@ const RegisterClients = ({ route, navigation }) => {
   };
 
   const saveClient = async () => {
+  if (isSaving) return;
+  setIsSaving(true);
+  try {
     const {
       person,
       cep,
@@ -89,63 +97,72 @@ const RegisterClients = ({ route, navigation }) => {
       email,
       phone,
       cnpj,
-      logo,
     } = infoClients;
 
-    if (!person || !cep || !address || !number || !neighborhood || !email || !phone || !cnpj) {
-      Alert.alert("Erro", "Por favor, preencha todos os campos obrigatórios.");
+    // monta a chave única (CNPJ > e-mail > telefone)
+    const key =
+      (cnpj && `cnpj:${digits(cnpj)}`) ||
+      (email && `email:${norm(email)}`) ||
+      (phone && `phone:${digits(phone)}`) ||
+      null;
+
+    if (!key) {
+      Alert.alert("Dados insuficientes", "Informe CNPJ, e-mail ou telefone para cadastrar o cliente sem duplicar.");
+      setIsSaving(false);
       return;
     }
 
-    try {
-      let logoUrl = infoClients.logo;
-      
-      // Se for uma nova imagem, fazer o upload
-      if (infoClients.logo && !infoClients.logo.startsWith("http")) {
-        logoUrl = await uploadImageToFirebase(infoClients.logo);
-      }
-
-      if (client) {
-        // Atualizar cliente existente
-        await updateDoc(doc(db, "clients", client.id), {
-          person,
-          cep,
-          address,
-          number,
-          neighborhood,
-          complement,
-          email,
-          phone,
-          cnpj,
-          logo: logoUrl,
-        });
-
-        Alert.alert("Sucesso", "Cliente atualizado com sucesso!");
-      } else {
-        // Criar novo cliente
-        await addDoc(collection(db, "clients"), {
-          person,
-          cep,
-          address,
-          number,
-          neighborhood,
-          complement,
-          email,
-          phone,
-          cnpj,
-          logo: logoUrl,
-          createdAt: serverTimestamp(),
-        });
-
-        Alert.alert("Sucesso", "Cliente registrado com sucesso!");
-      }
-
-      navigation.goBack();
-    } catch (error) {
-      console.error("Erro ao salvar cliente: ", error);
-      Alert.alert("Erro", "Falha ao salvar o cliente. Tente novamente.");
+    // sobe a logo se for local
+    let logoUrl = infoClients.logo || null;
+    if (logoUrl && !String(logoUrl).startsWith("http")) {
+      logoUrl = await uploadImageToFirebase(logoUrl);
     }
-  };
+
+    if (client && client.id) {
+      // Atualiza cliente existente
+      await updateDoc(doc(db, "clients", client.id), {
+        person,
+        cep,
+        address,
+        number,
+        neighborhood,
+        complement,
+        email,
+        phone,
+        cnpj,
+        logo: logoUrl,
+        updatedAt: serverTimestamp(),
+      });
+      Alert.alert("Sucesso", "Cliente atualizado com sucesso!");
+    } else {
+      // Criação idempotente: usa chave determinística
+      const clientRef = doc(db, "clients", key);
+      await setDoc(clientRef, {
+        person,
+        cep,
+        address,
+        number,
+        neighborhood,
+        complement,
+        email,
+        phone,
+        cnpj,
+        logo: logoUrl,
+        key,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      Alert.alert("Sucesso", "Cliente registrado com sucesso!");
+    }
+
+    navigation.goBack();
+  } catch (error) {
+    console.error("Erro ao salvar cliente: ", error);
+    Alert.alert("Erro", "Falha ao salvar o cliente. Tente novamente.");
+  } finally {
+    setIsSaving(false);
+  }
+};
 
   return (
     <View style={styles.container}>
@@ -167,7 +184,7 @@ const RegisterClients = ({ route, navigation }) => {
         {infoClients.logo && <Image source={{ uri: infoClients.logo }} style={styles.logoPreview} />}
       </ScrollView>
 
-      <Pressable style={styles.saveButton} onPress={saveClient}>
+      <Pressable style={[styles.saveButton, isSaving && { opacity: 0.6 }]} disabled={isSaving} onPress={saveClient}>
         <Text style={styles.saveButtonText}>{client ? "Salvar Alterações" : "Adicionar Cliente"}</Text>
         <AntDesign name={client ? "save" : "plus"} size={24} color="white" />
       </Pressable>

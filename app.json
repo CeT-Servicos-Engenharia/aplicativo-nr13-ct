@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "nr13cet",
+    "slug": "nr13cet",
+    "version": "1.0.2",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon-mobile.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.startechsolutions.nr13cet"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "ba921952-7a9b-4ca8-857d-74d73078ed9b"
+      }
+    },
+    "plugins": [
+      "expo-asset"
+    ],
+    "newArchEnabled": true
+  }
+}

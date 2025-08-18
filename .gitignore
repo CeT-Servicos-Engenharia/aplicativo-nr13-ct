@@ -1,0 +1,26 @@
+# Depend�ncias
+node_modules/
+
+# Build est�tico do Expo Web
+dist/
+
+# Cache e arquivos tempor�rios
+.expo/
+.expo-shared/
+.cache/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Vari�veis de ambiente
+.env
+.env.local
+
+# Arquivos de sistema
+.DS_Store
+Thumbs.db
+.vercel
+src/tokens/*.json
+src/tokens/

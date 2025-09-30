@@ -40,7 +40,7 @@ async function getNextNumeroProjeto(dbInstance) {
       tx.set(counterRef, { next: 2, updatedAt: serverTimestamp() });
       return 1;
     } else {
-      const curr = snap.data().next || 1;
+      const curr = snap.data().next || 181;
       tx.update(counterRef, { next: curr + 1, updatedAt: serverTimestamp() });
       return curr;
     }

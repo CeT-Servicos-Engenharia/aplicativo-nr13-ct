@@ -21,29 +21,57 @@ import {
   deleteDoc,
   doc,
   Timestamp,
-  // ⬇️ imports mínimos adicionados para a sequência global por ano
   runTransaction,
   serverTimestamp,
+  orderBy,
+  limit,
 } from "firebase/firestore";
 import { useNavigation } from "@react-navigation/native";
 import generatePDFOpenning from "../components/PDF/generatePDFOpenning";
 import generatePDFUpdate from "../components/PDF/generatePDFUpdate";
 
-// ===== helper simples: gera numeroProjeto global por ano via transação Firestore =====
+// ===== helper: gera numeroProjeto global por ano garantindo início em 182 =====
 async function getNextNumeroProjeto(dbInstance) {
   const ano = new Date().getFullYear();
   const counterRef = doc(dbInstance, "counters", `global-${ano}`);
+  const BASELINE_MIN = 182; // 181 + 1
 
   const next = await runTransaction(dbInstance, async (tx) => {
     const snap = await tx.get(counterRef);
+
+    // Se o contador ainda não existe, inicializa a partir do maior já salvo (ou 182)
     if (!snap.exists()) {
-      tx.set(counterRef, { next: 2, updatedAt: serverTimestamp() });
-      return 1;
-    } else {
-      const curr = snap.data().next || 181;
-      tx.update(counterRef, { next: curr + 1, updatedAt: serverTimestamp() });
-      return curr;
+      const q = query(
+        collection(dbInstance, "inspections"),
+        orderBy("numeroProjeto", "desc"),
+        limit(1)
+      );
+      const snapMax = await getDocs(q);
+      let start = BASELINE_MIN;
+      if (!snapMax.empty) {
+        const dataMax = snapMax.docs[0].data();
+        const maxExistente = parseInt(dataMax.numeroProjeto, 10) || 0;
+        start = Math.max(BASELINE_MIN, maxExistente + 1);
+      }
+      tx.set(counterRef, { next: start + 1, updatedAt: serverTimestamp() });
+      return start;
     }
+
+    // Se já existe, usa o valor atual garantindo o baseline mínimo
+    const data = snap.data() || {};
+    let curr = parseInt(data.next, 10);
+    if (!Number.isFinite(curr)) curr = BASELINE_MIN;
+
+    // 'next' representa o próximo número a ser atribuído.
+    // Vamos garantir que ele nunca fique abaixo do baseline.
+    if (curr < BASELINE_MIN) {
+      tx.update(counterRef, { next: BASELINE_MIN + 1, updatedAt: serverTimestamp() });
+      return BASELINE_MIN;
+    }
+
+    // Fluxo normal: retorna o atual e já incrementa para o próximo uso
+    tx.update(counterRef, { next: curr + 1, updatedAt: serverTimestamp() });
+    return curr;
   });
 
   return String(next);
@@ -256,8 +284,8 @@ const ClientProjects = ({ route }) => {
 
         const newProjectData = {
           ...projectData,
-          numeroProjeto: novoNumero,          // <- novo número gerado
-          ano: new Date().getFullYear(),      // opcional, mantém histórico por ano
+          numeroProjeto: novoNumero,          // <- novo número gerado (>= 182)
+          ano: new Date().getFullYear(),      // opcional
           createdAt: Timestamp.now(),
           updatedAt: serverTimestamp(),
         };
@@ -396,7 +424,7 @@ const ClientProjects = ({ route }) => {
                 <Text>ART: {item.artProjeto}</Text>
                 <Text>Descrição: {item.descricaoRevisao}</Text>
                 <Text>Tipo de equipamento: {item.tipoEquipamento}</Text>
-                <Text>Data: {formatTimestamp(item.inspection.createdAt)}</Text>
+                <Text>Data: {formatTimestamp(item.inspection?.createdAt)}</Text>
               </View>
             </TouchableOpacity>
           )}
